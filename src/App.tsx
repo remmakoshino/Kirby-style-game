@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { VirtualPad } from './components/VirtualPad';
 import { GameUI } from './components/GameUI';
+import { BossHPBar } from './components/BossHPBar';
 import { useGameStore } from './store/gameStore';
 
 const App: React.FC = () => {
@@ -137,6 +138,7 @@ const App: React.FC = () => {
         {isPlaying && (
           <>
             <GameUI />
+            <BossHPBar />
             <VirtualPad visible={isMobile} />
           </>
         )}

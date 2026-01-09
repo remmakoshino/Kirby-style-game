@@ -66,6 +66,14 @@ export interface EnemyData {
   health: number;
 }
 
+/** ボスの状態データ */
+export interface BossData {
+  hp: number;
+  maxHp: number;
+  state: string;
+  isDefeated: boolean;
+}
+
 /** 吸い込み判定エリアの設定 */
 export interface InhaleArea {
   radius: number;           // 吸い込み範囲の半径
@@ -169,6 +177,14 @@ export const INITIAL_KIRBY_DATA: KirbyData = {
   inhaledEnemy: null,
   isAbilityActive: false,
   abilityCooldown: 0,
+};
+
+/** ボスの初期データ */
+export const INITIAL_BOSS_DATA: BossData = {
+  hp: 100,
+  maxHp: 100,
+  state: 'IDLE',
+  isDefeated: false,
 };
 
 /** 入力の初期状態 */

@@ -30,6 +30,7 @@ import {
   type AbilityContext,
 } from '../abilities';
 import { ObstacleManager } from '../obstacles';
+import { Boss, createBossTextures } from '../boss';
 
 // 敵のスポーン設定
 interface EnemySpawnConfig {
@@ -81,6 +82,9 @@ export class MainScene extends Phaser.Scene {
   // ギミック管理
   private obstacleManager!: ObstacleManager;
   
+  // ボス
+  private boss: Boss | null = null;
+  
   constructor() {
     super({ key: 'MainScene' });
   }
@@ -88,6 +92,9 @@ export class MainScene extends Phaser.Scene {
   preload(): void {
     // ピクセルアートテクスチャを生成
     this.createPixelArtTextures();
+    
+    // ボス用テクスチャ生成
+    createBossTextures(this);
     
     // ギミック管理初期化
     this.obstacleManager = new ObstacleManager(this);
@@ -126,6 +133,9 @@ export class MainScene extends Phaser.Scene {
     
     // ギミックを配置
     this.spawnObstacles();
+    
+    // ボスを配置（ステージ右端）
+    this.spawnBoss();
     
     // カメラ設定
     this.cameras.main.startFollow(this.kirby, true, 0.1, 0.1);
@@ -184,6 +194,9 @@ export class MainScene extends Phaser.Scene {
     
     // ギミック更新
     this.obstacleManager.update(delta, this.kirby);
+    
+    // ボス更新
+    this.updateBoss(delta);
     
     // アニメーション更新
     this.updateAnimations(delta, kirbyData.state);
@@ -562,6 +575,197 @@ export class MainScene extends Phaser.Scene {
       onHeal: (amount) => {
         this.handleHeal(amount);
       },
+    });
+  }
+  
+  /**
+   * ボスの配置
+   */
+  private spawnBoss(): void {
+    const gameWidth = this.scale.width;
+    const gameHeight = this.scale.height;
+    
+    // ステージ右端（カメラ外）にボスを配置
+    const bossX = gameWidth * 2.5;  // ステージの終わり付近
+    const bossY = gameHeight - 32;
+    
+    this.boss = new Boss(this, bossX, bossY);
+    this.boss.setTarget(this.kirby);
+    
+    // ボスとプラットフォームのコリジョン
+    this.physics.add.collider(this.boss.sprite, this.platforms);
+    
+    // ボスとカービィのコリジョン（ダメージ）
+    this.physics.add.overlap(
+      this.kirby,
+      this.boss.sprite,
+      () => this.handleBossCollision(),
+      undefined,
+      this
+    );
+    
+    // 衝撃波とカービィのコリジョン
+    this.physics.add.overlap(
+      this.kirby,
+      this.boss.shockWaveGroup,
+      (_, shockwave) => this.handleShockWaveCollision(shockwave as Phaser.Physics.Arcade.Sprite),
+      undefined,
+      this
+    );
+    
+    // HPバー更新コールバック
+    this.boss.onHpChange = (hp, maxHp) => {
+      const actions = getGameActions();
+      actions.setBossHp(hp);
+      console.log(`Boss HP: ${hp}/${maxHp}`);
+    };
+    
+    // 撃破時コールバック
+    this.boss.onDefeated = () => {
+      this.handleBossDefeated();
+    };
+    
+    // ボス戦開始フラグ（プレイヤーが近づいたら開始）
+    // 今回はすぐに開始
+    const actions = getGameActions();
+    actions.startBossBattle();
+  }
+  
+  /**
+   * ボスの更新
+   */
+  private updateBoss(delta: number): void {
+    if (!this.boss) return;
+    
+    this.boss.update(delta);
+    
+    // ボスの状態をストアに同期
+    const actions = getGameActions();
+    actions.setBossState(this.boss.state);
+    
+    // ハンマー攻撃判定チェック
+    if (this.boss.isHammerAttackActive()) {
+      this.checkHammerCollision();
+    }
+  }
+  
+  /**
+   * ハンマー攻撃との接触判定
+   */
+  private checkHammerCollision(): void {
+    if (!this.boss) return;
+    
+    const hammerZone = this.boss.hammerHitbox;
+    const kirbyBounds = this.kirby.getBounds();
+    const hammerBounds = new Phaser.Geom.Rectangle(
+      hammerZone.x - hammerZone.width / 2,
+      hammerZone.y - hammerZone.height / 2,
+      hammerZone.width,
+      hammerZone.height
+    );
+    
+    if (Phaser.Geom.Intersects.RectangleToRectangle(kirbyBounds, hammerBounds)) {
+      const knockbackDir = this.kirby.x < this.boss.sprite.x ? -1 : 1;
+      this.handleDamage(this.boss.getHammerDamage(), knockbackDir * 350, -250);
+    }
+  }
+  
+  /**
+   * ボスとの接触処理
+   */
+  private handleBossCollision(): void {
+    if (!this.boss || !this.boss.isAlive) return;
+    
+    // ボスがスタン中でなければダメージ
+    if (this.boss.state !== 'STUNNED') {
+      this.handleDamage(2, this.kirby.x < this.boss.sprite.x ? -300 : 300, -200);
+    } else {
+      // スタン中はボスにダメージを与えられる
+      this.boss.takeDamage(10);
+      
+      // カービィをノックバック
+      const knockbackDir = this.kirby.x < this.boss.sprite.x ? -1 : 1;
+      const body = this.kirby.body as Phaser.Physics.Arcade.Body;
+      body.setVelocity(knockbackDir * 200, -150);
+    }
+  }
+  
+  /**
+   * 衝撃波との接触処理
+   */
+  private handleShockWaveCollision(shockwave: Phaser.Physics.Arcade.Sprite): void {
+    const damage = shockwave.getData('damage') as number || 1;
+    const knockbackDir = shockwave.x < this.kirby.x ? 1 : -1;
+    this.handleDamage(damage, knockbackDir * 250, -200);
+  }
+  
+  /**
+   * ボス撃破時の処理
+   */
+  private handleBossDefeated(): void {
+    console.log('🎉 Boss Defeated!');
+    
+    const actions = getGameActions();
+    actions.defeatBoss();
+    actions.addScore(10000);
+    
+    // 勝利演出
+    this.cameras.main.flash(500, 255, 255, 255);
+    
+    // カービィのダンス
+    this.tweens.add({
+      targets: this.kirby,
+      y: this.kirby.y - 50,
+      duration: 300,
+      yoyo: true,
+      repeat: 3,
+      ease: 'Sine.easeInOut',
+    });
+    
+    // 次ステージへのポータル生成
+    this.time.delayedCall(2000, () => {
+      this.createVictoryPortal();
+    });
+  }
+  
+  /**
+   * 勝利ポータルの生成
+   */
+  private createVictoryPortal(): void {
+    if (!this.boss) return;
+    
+    const portalX = this.boss.sprite.x;
+    const portalY = this.boss.sprite.y - 50;
+    
+    // ポータルスプライト（簡易版）
+    const portal = this.add.graphics();
+    portal.setDepth(20);
+    
+    // 虹色の輪
+    let hue = 0;
+    this.time.addEvent({
+      delay: 50,
+      loop: true,
+      callback: () => {
+        portal.clear();
+        const color = Phaser.Display.Color.HSLToColor(hue / 360, 1, 0.5).color;
+        portal.lineStyle(4, color, 1);
+        portal.strokeCircle(portalX, portalY, 40);
+        portal.fillStyle(color, 0.3);
+        portal.fillCircle(portalX, portalY, 35);
+        hue = (hue + 5) % 360;
+      },
+    });
+    
+    // ポータルとのコリジョン（次ステージへ）
+    const portalZone = this.add.zone(portalX, portalY, 80, 80);
+    this.physics.world.enable(portalZone);
+    (portalZone.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+    
+    this.physics.add.overlap(this.kirby, portalZone, () => {
+      console.log('🌟 Stage Clear! Moving to next stage...');
+      // 次ステージ遷移（今回は再スタート）
+      this.scene.restart();
     });
   }
   
@@ -1149,6 +1353,11 @@ export class MainScene extends Phaser.Scene {
       direction: getKirbyData().direction,
       enemies: this.enemyGroup,
       platforms: this.platforms,
+      boss: this.boss ? {
+        sprite: this.boss.sprite,
+        takeDamage: (amount: number) => this.boss?.takeDamage(amount),
+        isAlive: this.boss.isAlive,
+      } : undefined,
     };
   }
   

@@ -21,6 +21,11 @@ export interface AbilityContext {
   direction: Direction;
   enemies: Phaser.Physics.Arcade.Group;
   platforms: Phaser.Physics.Arcade.StaticGroup;
+  boss?: {
+    sprite: Phaser.Physics.Arcade.Sprite;
+    takeDamage: (amount: number) => void;
+    isAlive: boolean;
+  };
 }
 
 /** 能力の設定 */
@@ -270,6 +275,7 @@ export abstract class BaseAbility {
     
     const hitboxBounds = this.hitbox.getBounds();
     
+    // 敵との衝突判定
     context.enemies.getChildren().forEach((child) => {
       const enemy = child as Phaser.Physics.Arcade.Sprite;
       const enemyBounds = enemy.getBounds();
@@ -278,6 +284,15 @@ export abstract class BaseAbility {
         this.onEnemyHit(context, enemy);
       }
     });
+    
+    // ボスとの衝突判定
+    if (context.boss && context.boss.isAlive) {
+      const bossBounds = context.boss.sprite.getBounds();
+      
+      if (Phaser.Geom.Intersects.RectangleToRectangle(hitboxBounds, bossBounds)) {
+        this.onBossHit(context);
+      }
+    }
   }
   
   /** 敵にヒットした時の処理（オーバーライド可能） */
@@ -293,6 +308,66 @@ export abstract class BaseAbility {
     actions.addScore(150);
     
     enemy.destroy();
+  }
+  
+  /** ボスにヒットした時の処理 */
+  protected onBossHit(context: AbilityContext): void {
+    if (!context.boss) return;
+    
+    // ボスにダメージ
+    context.boss.takeDamage(this.config.damage);
+    
+    // ダメージエフェクト（大きめ）
+    this.createBossHitEffect(context, context.boss.sprite.x, context.boss.sprite.y - 30);
+    
+    // スコア追加
+    const actions = getGameActions();
+    actions.addScore(50);
+  }
+  
+  protected createBossHitEffect(context: AbilityContext, x: number, y: number): void {
+    // ボス用の大きいヒットエフェクト
+    const flash = context.scene.add.circle(x, y, 50, 0xFFFF00, 1);
+    flash.setDepth(20);
+    
+    context.scene.tweens.add({
+      targets: flash,
+      scale: 2.5,
+      alpha: 0,
+      duration: 250,
+      onComplete: () => flash.destroy(),
+    });
+    
+    // 「HIT!」テキスト
+    const hitText = context.scene.add.text(x, y - 40, 'HIT!', {
+      fontSize: '24px',
+      fontFamily: 'Arial Black',
+      color: '#FFFF00',
+      stroke: '#000000',
+      strokeThickness: 4,
+    });
+    hitText.setOrigin(0.5);
+    hitText.setDepth(25);
+    
+    context.scene.tweens.add({
+      targets: hitText,
+      y: y - 80,
+      alpha: 0,
+      duration: 500,
+      onComplete: () => hitText.destroy(),
+    });
+    
+    // ダメージパーティクル（大きい）
+    const particles = context.scene.add.particles(x, y, 'particle-inhale', {
+      tint: this.config.particleColor,
+      speed: { min: 150, max: 300 },
+      angle: { min: 0, max: 360 },
+      scale: { start: 1.2, end: 0 },
+      lifespan: 500,
+      quantity: 12,
+    });
+    
+    context.scene.time.delayedCall(600, () => particles.destroy());
   }
   
   protected createHitEffect(context: AbilityContext, x: number, y: number): void {

@@ -13,10 +13,12 @@ import type {
   GameInput,
   KirbyData,
   EnemyData,
+  BossData,
 } from '../types/game.types';
 import {
   INITIAL_KIRBY_DATA,
   INITIAL_GAME_INPUT,
+  INITIAL_BOSS_DATA,
 } from '../types/game.types';
 
 // ============================================
@@ -34,6 +36,10 @@ interface GameStore {
   
   // 敵キャラクター
   enemies: EnemyData[];
+  
+  // ボス状態
+  boss: BossData | null;
+  isBossBattle: boolean;
   
   // 入力状態（バーチャルパッドからの入力）
   input: GameInput;
@@ -82,6 +88,14 @@ interface GameStore {
   setEnemyBeingInhaled: (id: string, isBeingInhaled: boolean) => void;
   
   // ============================================
+  // アクション：ボス管理
+  // ============================================
+  startBossBattle: () => void;
+  setBossHp: (hp: number) => void;
+  setBossState: (state: string) => void;
+  defeatBoss: () => void;
+  
+  // ============================================
   // アクション：入力状態の更新
   // ============================================
   updateInput: (input: Partial<GameInput>) => void;
@@ -100,6 +114,8 @@ export const useGameStore = create<GameStore>()(
     score: 0,
     kirby: { ...INITIAL_KIRBY_DATA },
     enemies: [],
+    boss: null,
+    isBossBattle: false,
     input: { ...INITIAL_GAME_INPUT },
     
     // ============================================
@@ -111,6 +127,8 @@ export const useGameStore = create<GameStore>()(
       score: 0,
       kirby: { ...INITIAL_KIRBY_DATA },
       enemies: [],
+      boss: null,
+      isBossBattle: false,
     }),
     
     pauseGame: () => set({ isPaused: true }),
@@ -123,6 +141,8 @@ export const useGameStore = create<GameStore>()(
       score: 0,
       kirby: { ...INITIAL_KIRBY_DATA },
       enemies: [],
+      boss: null,
+      isBossBattle: false,
       input: { ...INITIAL_GAME_INPUT },
     }),
     
@@ -205,6 +225,26 @@ export const useGameStore = create<GameStore>()(
     })),
     
     // ============================================
+    // ボス管理
+    // ============================================
+    startBossBattle: () => set({
+      isBossBattle: true,
+      boss: { ...INITIAL_BOSS_DATA },
+    }),
+    
+    setBossHp: (hp) => set((state) => ({
+      boss: state.boss ? { ...state.boss, hp: Math.max(0, hp) } : null,
+    })),
+    
+    setBossState: (bossState) => set((state) => ({
+      boss: state.boss ? { ...state.boss, state: bossState } : null,
+    })),
+    
+    defeatBoss: () => set((state) => ({
+      boss: state.boss ? { ...state.boss, hp: 0, state: 'DEFEATED', isDefeated: true } : null,
+    })),
+    
+    // ============================================
     // コピー能力の状態更新
     // ============================================
     setAbilityActive: (isActive) => set((prev) => ({
@@ -260,5 +300,16 @@ export const getGameActions = () => {
     updateEnemyPosition: state.updateEnemyPosition,
     setEnemyBeingInhaled: state.setEnemyBeingInhaled,
     addScore: state.addScore,
+    // ボス関連
+    startBossBattle: state.startBossBattle,
+    setBossHp: state.setBossHp,
+    setBossState: state.setBossState,
+    defeatBoss: state.defeatBoss,
   };
 };
+
+/** ボス状態を取得 */
+export const getBossData = (): BossData | null => useGameStore.getState().boss;
+
+/** ボス戦中かどうか */
+export const isBossBattle = (): boolean => useGameStore.getState().isBossBattle;
