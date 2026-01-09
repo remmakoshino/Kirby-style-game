@@ -1,0 +1,5 @@
+/**
+ * ストアのエクスポート
+ */
+
+export * from './gameStore';
