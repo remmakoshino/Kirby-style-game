@@ -52,6 +52,8 @@ export interface KirbyData {
   hoverTime: number;        // ホバリング継続時間
   maxHoverTime: number;     // 最大ホバリング時間
   inhaledEnemy: EnemyType | null; // 吸い込んだ敵の種類
+  isAbilityActive: boolean; // 能力発動中フラグ
+  abilityCooldown: number;  // 能力クールダウン残り時間(0-1)
 }
 
 /** 敵キャラクターのデータ */
@@ -165,6 +167,8 @@ export const INITIAL_KIRBY_DATA: KirbyData = {
   hoverTime: 0,
   maxHoverTime: 3000,       // 3秒
   inhaledEnemy: null,
+  isAbilityActive: false,
+  abilityCooldown: 0,
 };
 
 /** 入力の初期状態 */
@@ -176,3 +180,55 @@ export const INITIAL_GAME_INPUT: GameInput = {
   action: false,
   actionPressed: false,
 };
+
+// ============================================
+// ギミック型定義
+// ============================================
+
+/** ギミックの種類 */
+export type ObstacleType = 
+  | 'SPIKE'           // トゲ
+  | 'MOVING_PLATFORM' // 動く床
+  | 'FOOD'            // 回復アイテム
+  | 'SPRING'          // ジャンプ台
+  | 'BREAKABLE';      // 壊れるブロック
+
+/** 動く床の移動パターン */
+export type PlatformPattern = 
+  | 'HORIZONTAL'      // 水平移動
+  | 'VERTICAL'        // 垂直移動
+  | 'CIRCULAR';       // 円運動
+
+/** 動く床の設定 */
+export interface MovingPlatformConfig {
+  pattern: PlatformPattern;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  speed: number;        // 移動速度
+  waitTime?: number;    // 端での待機時間(ms)
+}
+
+/** トゲの設定 */
+export interface SpikeConfig {
+  damage: number;
+  knockbackForce: number;
+}
+
+/** 回復アイテムの設定 */
+export interface FoodConfig {
+  healAmount: number;
+  type: 'APPLE' | 'TOMATO' | 'MAXIM_TOMATO';
+}
+
+/** ギミック共通データ */
+export interface ObstacleData {
+  id: string;
+  type: ObstacleType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  isActive: boolean;
+}

@@ -1,6 +1,6 @@
 /**
  * メインゲームシーン（改良版）
- * ピクセルアートキャラクター、物理挙動、吸い込みロジックを統合
+ * ピクセルアートキャラクター、物理挙動、吸い込みロジック、コピー能力を統合
  */
 
 import Phaser from 'phaser';
@@ -9,6 +9,7 @@ import type {
   PhysicsConfig,
   InhaleArea,
   EnemyType,
+  CopyAbility,
 } from '../../types/game.types';
 import {
   DEFAULT_PHYSICS_CONFIG,
@@ -22,6 +23,13 @@ import {
 import { createPixelArtTexture } from '../utils/pixelArt';
 import { KIRBY_SPRITES } from '../sprites/kirbySprites';
 import { WADDLE_DEE_SPRITES } from '../sprites/waddleDeeSprites';
+import {
+  createAbility,
+  getAbilityColor,
+  type BaseAbility,
+  type AbilityContext,
+} from '../abilities';
+import { ObstacleManager } from '../obstacles';
 
 // 敵のスポーン設定
 interface EnemySpawnConfig {
@@ -66,6 +74,13 @@ export class MainScene extends Phaser.Scene {
   // ホバリング用パーティクル
   private hoverParticles!: Phaser.GameObjects.Particles.ParticleEmitter;
   
+  // コピー能力システム
+  private currentAbility: BaseAbility | null = null;
+  private kirbyTintColor: number | null = null;
+  
+  // ギミック管理
+  private obstacleManager!: ObstacleManager;
+  
   constructor() {
     super({ key: 'MainScene' });
   }
@@ -73,6 +88,10 @@ export class MainScene extends Phaser.Scene {
   preload(): void {
     // ピクセルアートテクスチャを生成
     this.createPixelArtTextures();
+    
+    // ギミック管理初期化
+    this.obstacleManager = new ObstacleManager(this);
+    this.obstacleManager.createTextures();
   }
   
   create(): void {
@@ -105,6 +124,9 @@ export class MainScene extends Phaser.Scene {
     // 敵を配置
     this.spawnEnemies();
     
+    // ギミックを配置
+    this.spawnObstacles();
+    
     // カメラ設定
     this.cameras.main.startFollow(this.kirby, true, 0.1, 0.1);
     this.cameras.main.setDeadzone(100, 50);
@@ -127,8 +149,14 @@ export class MainScene extends Phaser.Scene {
     // カービィの状態に応じた処理
     const kirbyData = getKirbyData();
     
-    // 吸い込み処理
-    if (input.action && kirbyData.state !== 'FULL') {
+    // コピー能力の同期チェック
+    this.syncCopyAbility(kirbyData.copyAbility);
+    
+    // コピー能力を持っている場合はアクションボタンで能力発動
+    if (kirbyData.copyAbility !== 'NONE' && kirbyData.state !== 'FULL') {
+      this.handleAbilityAction(input, kirbyData, delta);
+    } else if (input.action && kirbyData.state !== 'FULL') {
+      // 能力がない場合は吸い込み処理
       this.handleInhale(delta);
     } else {
       this.inhaleGraphics.clear();
@@ -136,6 +164,9 @@ export class MainScene extends Phaser.Scene {
         actions.setKirbyState(isOnGround ? 'IDLE' : 'FALLING');
       }
     }
+    
+    // コピー能力の更新
+    this.updateAbility(delta, kirbyData);
     
     // 移動処理
     this.handleMovement(input, kirbyData.state);
@@ -151,11 +182,17 @@ export class MainScene extends Phaser.Scene {
     // 敵のAI更新
     this.updateEnemies(delta);
     
+    // ギミック更新
+    this.obstacleManager.update(delta, this.kirby);
+    
     // アニメーション更新
     this.updateAnimations(delta, kirbyData.state);
     
     // パーティクル更新
     this.updateParticles(kirbyData.state);
+    
+    // カービィの色更新
+    this.updateKirbyTint(kirbyData);
     
     // 入力状態を次フレーム用に保存
     this.wasJumpPressed = input.jump;
@@ -440,6 +477,124 @@ export class MainScene extends Phaser.Scene {
       });
       
       this.enemyAnimTimers.set(`enemy-${index}`, 0);
+    });
+  }
+  
+  /**
+   * ギミックの配置
+   */
+  private spawnObstacles(): void {
+    const gameHeight = this.scale.height;
+    
+    // トゲを配置
+    this.obstacleManager.spawnObstacle({
+      type: 'SPIKE',
+      x: 550,
+      y: gameHeight - 32,
+      properties: { damage: 1, knockback: 300 },
+    });
+    this.obstacleManager.spawnObstacle({
+      type: 'SPIKE',
+      x: 582,
+      y: gameHeight - 32,
+      properties: { damage: 1, knockback: 300 },
+    });
+    this.obstacleManager.spawnObstacle({
+      type: 'SPIKE',
+      x: 614,
+      y: gameHeight - 32,
+      properties: { damage: 1, knockback: 300 },
+    });
+    
+    // 動く床を配置（水平移動）
+    this.obstacleManager.spawnObstacle({
+      type: 'MOVING_PLATFORM',
+      x: 750,
+      y: gameHeight - 150,
+      properties: {
+        pattern: 'HORIZONTAL',
+        endX: 950,
+        endY: gameHeight - 150,
+        speed: 80,
+        waitTime: 500,
+      },
+    });
+    
+    // 動く床を配置（垂直移動）
+    this.obstacleManager.spawnObstacle({
+      type: 'MOVING_PLATFORM',
+      x: 1100,
+      y: gameHeight - 100,
+      properties: {
+        pattern: 'VERTICAL',
+        endX: 1100,
+        endY: gameHeight - 250,
+        speed: 60,
+        waitTime: 800,
+      },
+    });
+    
+    // 回復アイテムを配置
+    this.obstacleManager.spawnObstacle({
+      type: 'FOOD',
+      x: 350,
+      y: gameHeight - 80,
+      properties: { foodType: 'APPLE' },
+    });
+    this.obstacleManager.spawnObstacle({
+      type: 'FOOD',
+      x: 850,
+      y: gameHeight - 200,
+      properties: { foodType: 'TOMATO' },
+    });
+    this.obstacleManager.spawnObstacle({
+      type: 'FOOD',
+      x: 1300,
+      y: gameHeight - 280,
+      properties: { foodType: 'MAXIM_TOMATO' },
+    });
+    
+    // コリジョン設定
+    this.obstacleManager.setupCollisions(this.kirby, {
+      onDamage: (damage, knockbackX, knockbackY) => {
+        this.handleDamage(damage, knockbackX, knockbackY);
+      },
+      onHeal: (amount) => {
+        this.handleHeal(amount);
+      },
+    });
+  }
+  
+  /**
+   * ダメージ処理
+   */
+  private handleDamage(damage: number, knockbackX: number, knockbackY: number): void {
+    // ノックバック
+    const body = this.kirby.body as Phaser.Physics.Arcade.Body;
+    body.setVelocity(knockbackX, knockbackY);
+    
+    // TODO: HPシステム実装時にダメージを適用
+    console.log(`Damage: ${damage}`);
+    
+    // ダメージエフェクト
+    this.cameras.main.shake(100, 0.01);
+  }
+  
+  /**
+   * 回復処理
+   */
+  private handleHeal(amount: number): void {
+    // TODO: HPシステム実装時に回復を適用
+    console.log(`Heal: ${amount}`);
+    
+    // 回復エフェクト（キラキラ）
+    this.tweens.add({
+      targets: this.kirby,
+      tint: { from: 0xFFFFFF, to: 0x00FF00 },
+      duration: 200,
+      yoyo: true,
+      repeat: 1,
+      onComplete: () => this.kirby.clearTint(),
     });
   }
   
@@ -873,6 +1028,10 @@ export class MainScene extends Phaser.Scene {
   }
   
   private createCopyAbilityEffect(): void {
+    const kirbyData = getKirbyData();
+    const abilityColor = getAbilityColor(kirbyData.copyAbility);
+    
+    // 白いフラッシュ
     const flash = this.add.circle(this.kirby.x, this.kirby.y, 100, 0xFFFFFF, 0.8);
     flash.setDepth(20);
     
@@ -883,6 +1042,137 @@ export class MainScene extends Phaser.Scene {
       duration: 500,
       onComplete: () => flash.destroy(),
     });
+    
+    // 能力の色のリング
+    const ring = this.add.circle(this.kirby.x, this.kirby.y, 30, abilityColor, 0.6);
+    ring.setDepth(19);
+    ring.setStrokeStyle(4, abilityColor);
+    
+    this.tweens.add({
+      targets: ring,
+      scale: 4,
+      alpha: 0,
+      duration: 600,
+      onComplete: () => ring.destroy(),
+    });
+    
+    // 新しい能力インスタンスを作成
+    this.currentAbility?.destroy();
+    this.currentAbility = createAbility(kirbyData.copyAbility);
+    this.kirbyTintColor = abilityColor;
+  }
+  
+  // ============================================
+  // コピー能力システム
+  // ============================================
+  
+  /**
+   * Zustandストアとローカル能力インスタンスを同期
+   */
+  private syncCopyAbility(copyAbility: CopyAbility): void {
+    // 能力が変わった場合、インスタンスを更新
+    if (copyAbility === 'NONE' && this.currentAbility) {
+      this.currentAbility.destroy();
+      this.currentAbility = null;
+      this.kirbyTintColor = null;
+    } else if (copyAbility !== 'NONE' && (!this.currentAbility || this.currentAbility.type !== copyAbility)) {
+      this.currentAbility?.destroy();
+      this.currentAbility = createAbility(copyAbility);
+      this.kirbyTintColor = getAbilityColor(copyAbility);
+    }
+  }
+  
+  /**
+   * コピー能力の発動処理
+   */
+  private handleAbilityAction(
+    input: ReturnType<typeof this.getUnifiedInput>,
+    kirbyData: ReturnType<typeof getKirbyData>,
+    _delta: number
+  ): void {
+    if (!this.currentAbility) return;
+    
+    const actions = getGameActions();
+    
+    // アクションボタンで能力発動
+    if (input.action && !this.currentAbility.isOnCooldown) {
+      const context = this.getAbilityContext();
+      const activated = this.currentAbility.execute(context);
+      
+      if (activated) {
+        actions.setKirbyState('ATTACKING');
+        actions.setAbilityActive(true);
+        
+        // 能力発動時のスケールエフェクト
+        this.tweens.add({
+          targets: this.kirby,
+          scaleX: 0.85,
+          scaleY: 1.15,
+          duration: 80,
+          yoyo: true,
+        });
+      }
+    }
+    
+    // アクションボタンを離したら能力を停止
+    if (!input.action && kirbyData.isAbilityActive) {
+      const context = this.getAbilityContext();
+      this.currentAbility.deactivate(context);
+      
+      const isOnGround = this.kirby.body?.blocked.down ?? false;
+      actions.setKirbyState(isOnGround ? 'IDLE' : 'FALLING');
+      actions.setAbilityActive(false);
+    }
+  }
+  
+  /**
+   * コピー能力の更新
+   */
+  private updateAbility(delta: number, _kirbyData: ReturnType<typeof getKirbyData>): void {
+    if (!this.currentAbility) return;
+    
+    const context = this.getAbilityContext();
+    this.currentAbility.update(context, delta);
+    
+    // クールダウン状態をストアに反映
+    const actions = getGameActions();
+    actions.setAbilityCooldown(this.currentAbility.cooldownProgress);
+  }
+  
+  /**
+   * 能力実行用のコンテキストを生成
+   */
+  private getAbilityContext(): AbilityContext {
+    return {
+      scene: this,
+      owner: this.kirby,
+      direction: getKirbyData().direction,
+      enemies: this.enemyGroup,
+      platforms: this.platforms,
+    };
+  }
+  
+  /**
+   * カービィの色を能力に応じて更新
+   */
+  private updateKirbyTint(kirbyData: ReturnType<typeof getKirbyData>): void {
+    if (kirbyData.copyAbility !== 'NONE' && this.kirbyTintColor) {
+      // 能力保持時は薄くティントを適用
+      this.kirby.setTint(
+        Phaser.Display.Color.GetColor(
+          ((this.kirbyTintColor >> 16) & 0xFF) * 0.3 + 255 * 0.7,
+          ((this.kirbyTintColor >> 8) & 0xFF) * 0.3 + 255 * 0.7,
+          (this.kirbyTintColor & 0xFF) * 0.3 + 255 * 0.7
+        )
+      );
+    } else {
+      this.kirby.clearTint();
+    }
+    
+    // 攻撃中は色を強調
+    if (kirbyData.state === 'ATTACKING' && this.kirbyTintColor) {
+      this.kirby.setTint(this.kirbyTintColor);
+    }
   }
   
   // ============================================

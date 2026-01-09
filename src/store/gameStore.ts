@@ -67,6 +67,12 @@ interface GameStore {
   /** コピー能力を失う */
   loseCopyAbility: () => void;
   
+  /** 能力発動状態を設定 */
+  setAbilityActive: (isActive: boolean) => void;
+  
+  /** 能力クールダウンを設定 */
+  setAbilityCooldown: (cooldown: number) => void;
+  
   // ============================================
   // アクション：敵の管理
   // ============================================
@@ -199,6 +205,17 @@ export const useGameStore = create<GameStore>()(
     })),
     
     // ============================================
+    // コピー能力の状態更新
+    // ============================================
+    setAbilityActive: (isActive) => set((prev) => ({
+      kirby: { ...prev.kirby, isAbilityActive: isActive },
+    })),
+    
+    setAbilityCooldown: (cooldown) => set((prev) => ({
+      kirby: { ...prev.kirby, abilityCooldown: cooldown },
+    })),
+    
+    // ============================================
     // 入力状態の更新
     // ============================================
     updateInput: (input) => set((state) => ({
@@ -235,6 +252,9 @@ export const getGameActions = () => {
     inhaleEnemy: state.inhaleEnemy,
     setCopyAbility: state.setCopyAbility,
     releaseEnemy: state.releaseEnemy,
+    loseCopyAbility: state.loseCopyAbility,
+    setAbilityActive: state.setAbilityActive,
+    setAbilityCooldown: state.setAbilityCooldown,
     addEnemy: state.addEnemy,
     removeEnemy: state.removeEnemy,
     updateEnemyPosition: state.updateEnemyPosition,

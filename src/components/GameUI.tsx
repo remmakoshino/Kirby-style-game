@@ -15,6 +15,24 @@ const abilityIcons: Record<CopyAbility, string> = {
   SPARK: '⚡',
 };
 
+const abilityColors: Record<CopyAbility, string> = {
+  NONE: '#FFB6C1',
+  FIRE: '#FF4500',
+  ICE: '#00BFFF',
+  SWORD: '#00FF00',
+  BEAM: '#FF00FF',
+  SPARK: '#00FFFF',
+};
+
+const abilityNames: Record<CopyAbility, string> = {
+  NONE: '',
+  FIRE: 'ファイア',
+  ICE: 'アイス',
+  SWORD: 'ソード',
+  BEAM: 'ビーム',
+  SPARK: 'スパーク',
+};
+
 const stateLabels: Record<KirbyState, string> = {
   IDLE: '待機',
   WALKING: '歩行',
@@ -56,10 +74,74 @@ export const GameUI: React.FC = () => {
       </div>
 
       {/* コピー能力 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: '24px' }}>{abilityIcons[kirby.copyAbility]}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 50,
+            height: 50,
+            borderRadius: '50%',
+            backgroundColor: kirby.copyAbility !== 'NONE' 
+              ? abilityColors[kirby.copyAbility] 
+              : 'rgba(255, 255, 255, 0.2)',
+            border: kirby.copyAbility !== 'NONE' 
+              ? `3px solid ${abilityColors[kirby.copyAbility]}` 
+              : '2px solid rgba(255, 255, 255, 0.4)',
+            boxShadow: kirby.copyAbility !== 'NONE' 
+              ? `0 0 15px ${abilityColors[kirby.copyAbility]}` 
+              : 'none',
+            transition: 'all 0.3s ease',
+            position: 'relative',
+          }}
+        >
+          <span style={{ fontSize: '28px' }}>{abilityIcons[kirby.copyAbility]}</span>
+          
+          {/* クールダウンオーバーレイ */}
+          {kirby.abilityCooldown > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                borderRadius: '50%',
+                backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <div
+                style={{
+                  width: `${(1 - kirby.abilityCooldown) * 100}%`,
+                  height: `${(1 - kirby.abilityCooldown) * 100}%`,
+                  backgroundColor: abilityColors[kirby.copyAbility],
+                  borderRadius: '50%',
+                  opacity: 0.5,
+                }}
+              />
+            </div>
+          )}
+        </div>
+        
         {kirby.copyAbility !== 'NONE' && (
-          <span>{kirby.copyAbility}</span>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span 
+              style={{ 
+                fontWeight: 'bold',
+                color: abilityColors[kirby.copyAbility],
+                textShadow: `0 0 5px ${abilityColors[kirby.copyAbility]}`,
+              }}
+            >
+              {abilityNames[kirby.copyAbility]}
+            </span>
+            <span style={{ fontSize: '11px', opacity: 0.7 }}>
+              Xキーで発動
+            </span>
+          </div>
         )}
       </div>
 
@@ -74,6 +156,7 @@ export const GameUI: React.FC = () => {
           }}
         >
           状態: {stateLabels[kirby.state]}
+          {kirby.isAbilityActive && ' (能力発動中)'}
         </div>
       )}
     </div>
