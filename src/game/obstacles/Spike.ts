@@ -10,7 +10,6 @@ import type { SpikeConfig } from '../../types/game.types';
 export class Spike {
   public readonly sprite: Phaser.Physics.Arcade.Sprite;
   public readonly config: SpikeConfig;
-  private readonly id: string;
   
   constructor(
     scene: Phaser.Scene,
@@ -19,7 +18,6 @@ export class Spike {
     id: string,
     config: SpikeConfig
   ) {
-    this.id = id;
     this.config = config;
     
     // スプライト作成
